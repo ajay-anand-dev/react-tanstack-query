@@ -1,48 +1,53 @@
-import { Link, useNavigate, useParams } from 'react-router-dom';
+import { Link, redirect, useNavigate, useParams, useSubmit } from 'react-router-dom';
 
 import Modal from '../UI/Modal.jsx';
 import EventForm from './EventForm.jsx';
-import { useMutation, useQuery } from '@tanstack/react-query';
+import { useQuery } from '@tanstack/react-query';
 import { fetchEvent, queryClient, updateEvent } from '../../util/http.js';
-import LoadingIndicator from '../UI/LoadingIndicator.jsx';
+// import LoadingIndicator from '../UI/LoadingIndicator.jsx';
 import ErrorBlock from '../UI/ErrorBlock.jsx';
 
 export default function EditEvent() {
   const params = useParams();
+  const submit = useSubmit();
   const navigate = useNavigate();
+  const { state } = useNavigate();
 
-  const { data, isPending, isError, error } = useQuery({
+  const { data, isError, error } = useQuery({ // isPending
     queryKey: ['events', params.id],
-    queryFn: ({ signal }) => fetchEvent({ signal, id: params.id }) // :id
+    queryFn: ({ signal }) => fetchEvent({ signal, id: params.id }), // :id
+    staleTime: 10000 // more than 10 seconds this will again called if someone is going and coming back or doing anything
   })
 
-  const { mutate } = useMutation({
-    mutationFn: updateEvent,
-    onMutate: async (data) => {
-      const newEvent = data.event; // we are taking new event data and updating the events to take this data
-      // cancel events query before setting to cancel any ongoing, it will cancel queries not the mutation 
-      await queryClient.cancelQueries({ queryKey: ['events', params.id] })
+  // const { mutate } = useMutation({
+  //   mutationFn: updateEvent,
+  //   onMutate: async (data) => {
+  //     const newEvent = data.event; // we are taking new event data and updating the events to take this data
+  //     // cancel events query before setting to cancel any ongoing, it will cancel queries not the mutation 
+  //     await queryClient.cancelQueries({ queryKey: ['events', params.id] })
 
-      // rolling back old data in case of error occur from backend
-      const previousEvent = queryClient.getQueryData(['events', params.id])
+  //     // rolling back old data in case of error occur from backend
+  //     const previousEvent = queryClient.getQueryData(['events', params.id])
 
-      // setting new event we are getting to the events
-      queryClient.setQueryData(['events', params.id], newEvent);
-      return { previousEvent }
-    },
-    onError: (error, data, context) => {
-      // context will content previousEvent
-      // rollback will happen here
-      queryClient.setQueryData(['events', params.id], context.previousEvent)
-    },
-    onSettled: () => { // failed or succeed this will call, like finally of try, catch  
-      queryClient.invalidateQueries(['events', params.id]);
-    }
-  });
+  //     // setting new event we are getting to the events
+  //     queryClient.setQueryData(['events', params.id], newEvent);
+  //     return { previousEvent }
+  //   },
+  //   onError: (error, data, context) => {
+  //     // context will content previousEvent
+  //     // rollback will happen here
+  //     queryClient.setQueryData(['events', params.id], context.previousEvent)
+  //   },
+  //   onSettled: () => { // failed or succeed this will call, like finally of try, catch  
+  //     queryClient.invalidateQueries(['events', params.id]);
+  //   }
+  // });
 
   function handleSubmit(formData) {
-    mutate({ id: params.id, event: formData });
-    navigate('../')
+    // mutate({ id: params.id, event: formData });
+    // navigate('../')
+
+    submit(formData, { method: 'PUT' })
   }
 
   function handleClose() {
@@ -51,13 +56,13 @@ export default function EditEvent() {
 
   let content;
 
-  if (isPending) {
-    content = (
-      <div className="center">
-        <LoadingIndicator />
-      </div>
-    )
-  }
+  // if (isPending) {
+  //   content = (
+  //     <div className="center">
+  //       <LoadingIndicator />
+  //     </div>
+  //   )
+  // }
 
   if (isError) {
     content = (
@@ -78,12 +83,16 @@ export default function EditEvent() {
   if (data) {
     content = (
       <EventForm inputData={data} onSubmit={handleSubmit}>
-        <Link to="../" className="button-text">
-          Cancel
-        </Link>
-        <button type="submit" className="button">
-          Update
-        </button>
+        {state === 'submittting' ? <p>Sending data...</p> : (
+          <>
+            <Link to="../" className="button-text">
+              Cancel
+            </Link>
+            <button type="submit" className="button">
+              Update
+            </button>
+          </>
+        )}
       </EventForm>
     )
   }
@@ -93,4 +102,20 @@ export default function EditEvent() {
       {content}
     </Modal>
   );
+}
+
+export function loader({ params }) {
+  // same as defined above
+  return queryClient.fetchQuery({
+    queryKey: ['events', params.id],
+    queryFn: ({ signal }) => fetchEvent({ signal, id: params.id }) // :id
+  })
+}
+
+export async function action({ request, params }) {
+  const formData = await request.formData();
+  const updatedEventData = Object.fromEntries(formData);
+  await updateEvent({ id: params.id, event: updatedEventData });
+  await queryClient.invalidateQueries(['events'])
+  return redirect('../');
 }
