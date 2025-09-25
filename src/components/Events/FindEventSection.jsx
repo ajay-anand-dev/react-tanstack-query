@@ -10,8 +10,8 @@ export default function FindEventSection() {
   const [searchTerm, setSearchTerm] = useState(); // setting to undefined so that searchTerm shouldn't start this
 
   const { data, isLoading, isError, error } = useQuery({
-    queryKey: ['events', { search: searchTerm }], // same queryKey will results in same data which is cached
-    queryFn: ({ signal }) => fetchEvents({ signal, searchTerm }),
+    queryKey: ['events', { searchTerm: searchTerm }], // same queryKey will results in same data which is cached
+    queryFn: ({ signal, queryKey }) => fetchEvents({ signal, ...queryKey[1] }),
     enabled: searchTerm !== undefined // setting to false as if nothing in input field it doesn't show any data
   })
 
